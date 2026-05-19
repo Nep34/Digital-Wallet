@@ -11,4 +11,88 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
-  
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  wallet    Wallet?
+  auditLogs AuditLog[]
+}
+
+model Wallet {
+  id        String   @id @default(uuid())
+
+  userId    String   @unique
+
+  balance   Float    @default(0)
+
+  currency  String   @default("NPR")
+
+  status    String   @default("active")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  sentTransactions     Transaction[] @relation("SentTransactions")
+
+  receivedTransactions Transaction[] @relation("ReceivedTransactions")
+  LedgerEntries        LedgerEntry[]
+}
+
+model Transaction {
+  id String @id @default(uuid())
+
+  senderWalletId String
+  receiverWalletId String
+
+  amount Float
+
+  type String
+
+  description String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  senderWallet Wallet @relation("SentTransactions",fields: [senderWalletId],references: [id])
+
+  receiverWallet Wallet @relation("ReceivedTransactions",fields: [receiverWalletId],references: [id])
+  ledgerEntries LedgerEntry[]
+}
+
+model LedgerEntry {
+  id String @id @default(uuid())
+
+  walletId String
+
+  transactionId String 
+
+  type String
+  amount Float
+
+  balanceAfter Float
+
+  createdAt DateTime @default(now())
+
+  wallet Wallet @relation(fields: [walletId], references: [id])
+
+  transaction Transaction @relation(fields: [transactionId], references: [id])
+}
+
+model AuditLog {
+  id String @id @default(uuid())
+
+  userId String
+
+  action String
+
+  timestamp DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
