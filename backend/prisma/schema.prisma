@@ -48,13 +48,12 @@ model User {
 }
 
 model Wallet {
-  id        String   @id @default(uuid())
+  id        String @id @default(uuid())
+  userId    String @unique
 
-  userId    String   @unique
+  balance   Float @default(0)
 
-  balance   Float    @default(0)
-
-  currency  String   @default("NPR")
+  currency  String @default("NPR")
 
   status    WalletStatus @default(ACTIVE)
 
@@ -64,13 +63,14 @@ model Wallet {
   user User @relation(fields: [userId], references: [id])
 
   sentTransactions     Transaction[] @relation("SentTransactions")
-
   receivedTransactions Transaction[] @relation("ReceivedTransactions")
-  LedgerEntries        ledgerEntry[]
+
+  ledgerEntries ledgerEntry[]
 }
 
 model Transaction {
   id String @id @default(uuid())
+  refrenceId String @unique
 
   senderWalletId String
   receiverWalletId String
