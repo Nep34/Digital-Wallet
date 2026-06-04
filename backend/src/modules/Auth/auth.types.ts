@@ -1,7 +1,3 @@
-type User = {
-    _id: string;
-    email: string;
-    password: string;
-    name: string;
-};
-export type { User };
+import type { User as PrismaUser } from '../../generated/prisma/client';
+
+export type User = PrismaUser;

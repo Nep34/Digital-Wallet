@@ -1,23 +1,41 @@
 import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
-import { User } from '../User/user.model';
-import {env} from '../../config/env';
+import { generateToken } from '../../utils/token';
+import { User as UserType } from './auth.types';
+import  prisma  from '../../config/prismaClient';
 const loginService = async (email: string, password: string) => {
     // Implement login logic here
     try {
-        const user = await User.findOne({ email });
+        const user: UserType | null = await prisma.user.findUnique({ where: { email } });
         if (!user) {
             throw new Error('Invalid email or password');
         }
 
-        const isMatch = await bcrypt.compare(password, user.password);
+        const isMatch: boolean = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             throw new Error('Invalid email or password');
         }
         
-        const token = jwt.sign({ id: user._id }, env.JWT_SECRET, { expiresIn: '1h' });
+        const token: string = generateToken(user.id.toString());
         return { user, token };
     } catch (error) {
         throw new Error('Login failed');
     }
 };
+
+const registerService = async (name: string, email: string, password: string) => {
+    // Implement registration logic here
+    try {
+        const existingUser: UserType | null = await prisma.user.findUnique({ where: { email } });
+        if (existingUser) {
+            throw new Error('Email already in use');
+        }
+        const hashedPassword: string = await bcrypt.hash(password, 10);
+        const newUser: UserType = await prisma.user.create({ data: { name, email, password: hashedPassword } });
+        const token: string = generateToken(newUser.id.toString());
+        return { user: newUser, token };
+    } catch (error) {
+        throw new Error('Registration failed');
+    }
+};
+
+export { loginService, registerService };

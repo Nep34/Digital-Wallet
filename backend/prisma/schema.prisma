@@ -67,7 +67,6 @@ model Wallet {
 
   ledgerEntries ledgerEntry[]
 }
-
 model Transaction {
   id String @id @default(uuid())
   refrenceId String @unique
