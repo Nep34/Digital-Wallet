@@ -11,4 +11,4 @@ const GetWallet = async (req: Request, res: Response) => {
     }
 }
 
-export { GetWallet };
+export { GetWallet};
