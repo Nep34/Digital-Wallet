@@ -1,10 +1,18 @@
 import prisma from '../../config/prismaClient';
+import { Prisma } from '../../generated/prisma/client';
 import { Ledger, LedgerType } from './ledger.type';
 
-const CreateLedgerEntryService = async (transactionId: string, amount: number, type: LedgerType, walletId: string, balanceAfter: number): Promise<Ledger> => {
+const CreateLedgerEntryService = async (
+    tx: Prisma.TransactionClient,
+    transactionId: string,
+    amount: number,
+    type: LedgerType,
+    walletId: string,
+    balanceAfter: number
+): Promise<Ledger> => {
     try {
 
-        const ledgerEntry = await prisma.ledgerEntry.create({
+        const ledgerEntry = await tx.ledgerEntry.create({
             data: {
                 transactionId,
                 amount,

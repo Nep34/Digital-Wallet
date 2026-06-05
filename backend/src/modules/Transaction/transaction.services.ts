@@ -1,5 +1,7 @@
 import prisma from '../../config/prismaClient';
 import { Transaction, TransactionTypes } from './transaction.type';
+import { UpdateWalletBalanceService } from '../Wallet/wallet.services';
+import { CreateLedgerEntryService } from '../ledger/ledger.services';
 
 type CreateTransactionPayload = {
     amount: number;
@@ -49,77 +51,23 @@ const CreateTransactionService = async ({ amount, type, senderWalletId, receiver
             });
 
             if (type === 'TRANSFER') {
-                const updatedSenderWallet = await tx.wallet.update({
-                    where: { id: senderWalletId },
-                    data: {
-                        balance: { decrement: amount }
-                    }
-                });
+                const updatedSenderWallet = await UpdateWalletBalanceService(tx, senderWalletId, amount, 'debit');
+                const updatedReceiverWallet = await UpdateWalletBalanceService(tx, receiverWalletId, amount, 'credit');
 
-                const updatedReceiverWallet = await tx.wallet.update({
-                    where: { id: receiverWalletId },
-                    data: {
-                        balance: { increment: amount }
-                    }
-                });
-
-                await tx.ledgerEntry.create({
-                    data: {
-                        transactionId: createdTransaction.id,
-                        amount,
-                        type: 'DEBIT',
-                        walletId: senderWalletId,
-                        balanceAfter: updatedSenderWallet.balance
-                    }
-                });
-
-                await tx.ledgerEntry.create({
-                    data: {
-                        transactionId: createdTransaction.id,
-                        amount,
-                        type: 'CREDIT',
-                        walletId: receiverWalletId,
-                        balanceAfter: updatedReceiverWallet.balance
-                    }
-                });
+                await CreateLedgerEntryService(tx, createdTransaction.id, amount, 'DEBIT', senderWalletId, updatedSenderWallet.balance);
+                await CreateLedgerEntryService(tx, createdTransaction.id, amount, 'CREDIT', receiverWalletId, updatedReceiverWallet.balance);
             } else if (type === 'DEPOSIT') {
-                const updatedReceiverWallet = await tx.wallet.update({
-                    where: { id: receiverWalletId },
-                    data: {
-                        balance: { increment: amount }
-                    }
-                });
+                const updatedReceiverWallet = await UpdateWalletBalanceService(tx, receiverWalletId, amount, 'credit');
 
-                await tx.ledgerEntry.create({
-                    data: {
-                        transactionId: createdTransaction.id,
-                        amount,
-                        type: 'CREDIT',
-                        walletId: receiverWalletId,
-                        balanceAfter: updatedReceiverWallet.balance
-                    }
-                });
+                await CreateLedgerEntryService(tx, createdTransaction.id, amount, 'CREDIT', receiverWalletId, updatedReceiverWallet.balance);
             } else if (type === 'WITHDRAWAL') {
                 if (senderWallet.balance < amount) {
                     throw new Error('Insufficient balance');
                 }
 
-                const updatedSenderWallet = await tx.wallet.update({
-                    where: { id: senderWalletId },
-                    data: {
-                        balance: { decrement: amount }
-                    }
-                });
+                const updatedSenderWallet = await UpdateWalletBalanceService(tx, senderWalletId, amount, 'debit');
 
-                await tx.ledgerEntry.create({
-                    data: {
-                        transactionId: createdTransaction.id,
-                        amount,
-                        type: 'DEBIT',
-                        walletId: senderWalletId,
-                        balanceAfter: updatedSenderWallet.balance
-                    }
-                });
+                await CreateLedgerEntryService(tx, createdTransaction.id, amount, 'DEBIT', senderWalletId, updatedSenderWallet.balance);
             }
 
             return createdTransaction;

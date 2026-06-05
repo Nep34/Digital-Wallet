@@ -1,8 +1,9 @@
 import prisma from '../../config/prismaClient';
+import { Prisma } from '../../generated/prisma/client';
 
-const CreateWalletService = async (userId: string) => {
+const CreateWalletService = async (tx: Prisma.TransactionClient, userId: string) => {
     try {
-        const wallet = await prisma.wallet.create({
+        const wallet = await tx.wallet.create({
             data: {
                 userId
             }
@@ -30,10 +31,19 @@ const GetWalletService = async (userId: string) => {
     }   
 }
 
-const UpdateWalletBalanceService = async (walletId: string, amount: number,type: string) => {
+const UpdateWalletBalanceService = async (tx: Prisma.TransactionClient, walletId: string, amount: number, type: string) => {
     try {
+        const wallet = await tx.wallet.findUnique({ where: { id: walletId } });
+        if (!wallet) {
+            throw new Error('Wallet not found');
+        }
+
+        if (type === 'debit' && wallet.balance < amount) {
+            throw new Error('Insufficient balance');
+        }
+
         const action = type === 'credit' ? 'increment' : 'decrement';
-        const wallet = await prisma.wallet.update({
+        const updated = await tx.wallet.update({
             where: { id: walletId },
             data: {
                 balance: {
@@ -41,7 +51,7 @@ const UpdateWalletBalanceService = async (walletId: string, amount: number,type:
                 }
             }
         });
-        return wallet;
+        return updated;
     } catch (error) {
         throw new Error('Failed to update wallet balance');
     }
