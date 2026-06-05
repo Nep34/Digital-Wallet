@@ -1,21 +1,133 @@
-import prisma  from '../../config/prismaClient';
+import prisma from '../../config/prismaClient';
 import { Transaction, TransactionTypes } from './transaction.type';
 
-const CreateTransactionService = async (amount: number, type: TransactionTypes, senderWalletId: string, receiverWalletId: string, description: string) => {
+type CreateTransactionPayload = {
+    amount: number;
+    type: TransactionTypes;
+    senderWalletId: string;
+    receiverWalletId: string;
+    description?: string;
+};
+
+const CreateTransactionService = async ({ amount, type, senderWalletId, receiverWalletId, description }: CreateTransactionPayload) => {
     try {
-        const transaction: Transaction = await prisma.transaction.create({
-            data: {
-                amount,
-                refrenceId: `TXN-${Date.now()}`,
-                type,
-                senderWalletId,
-                receiverWalletId,
-                description
+        const transaction = await prisma.$transaction(async (tx) => {
+            const senderWallet = await tx.wallet.findUnique({
+                where: { id: senderWalletId }
+            });
+
+            const receiverWallet = await tx.wallet.findUnique({
+                where: { id: receiverWalletId }
+            });
+
+            if (!senderWallet) {
+                throw new Error('Sender wallet not found');
             }
+
+            if (!receiverWallet) {
+                throw new Error('Receiver wallet not found');
+            }
+
+            if (amount <= 0) {
+                throw new Error('Amount must be greater than zero');
+            }
+
+            if (type === 'TRANSFER' && senderWallet.balance < amount) {
+                throw new Error('Insufficient balance');
+            }
+
+            const createdTransaction: Transaction = await tx.transaction.create({
+                data: {
+                    amount,
+                    refrenceId: `TXN-${Date.now()}`,
+                    type,
+                    senderWalletId,
+                    receiverWalletId,
+                    description: description ?? null,
+                    status: 'COMPLETED'
+                }
+            });
+
+            if (type === 'TRANSFER') {
+                const updatedSenderWallet = await tx.wallet.update({
+                    where: { id: senderWalletId },
+                    data: {
+                        balance: { decrement: amount }
+                    }
+                });
+
+                const updatedReceiverWallet = await tx.wallet.update({
+                    where: { id: receiverWalletId },
+                    data: {
+                        balance: { increment: amount }
+                    }
+                });
+
+                await tx.ledgerEntry.create({
+                    data: {
+                        transactionId: createdTransaction.id,
+                        amount,
+                        type: 'DEBIT',
+                        walletId: senderWalletId,
+                        balanceAfter: updatedSenderWallet.balance
+                    }
+                });
+
+                await tx.ledgerEntry.create({
+                    data: {
+                        transactionId: createdTransaction.id,
+                        amount,
+                        type: 'CREDIT',
+                        walletId: receiverWalletId,
+                        balanceAfter: updatedReceiverWallet.balance
+                    }
+                });
+            } else if (type === 'DEPOSIT') {
+                const updatedReceiverWallet = await tx.wallet.update({
+                    where: { id: receiverWalletId },
+                    data: {
+                        balance: { increment: amount }
+                    }
+                });
+
+                await tx.ledgerEntry.create({
+                    data: {
+                        transactionId: createdTransaction.id,
+                        amount,
+                        type: 'CREDIT',
+                        walletId: receiverWalletId,
+                        balanceAfter: updatedReceiverWallet.balance
+                    }
+                });
+            } else if (type === 'WITHDRAWAL') {
+                if (senderWallet.balance < amount) {
+                    throw new Error('Insufficient balance');
+                }
+
+                const updatedSenderWallet = await tx.wallet.update({
+                    where: { id: senderWalletId },
+                    data: {
+                        balance: { decrement: amount }
+                    }
+                });
+
+                await tx.ledgerEntry.create({
+                    data: {
+                        transactionId: createdTransaction.id,
+                        amount,
+                        type: 'DEBIT',
+                        walletId: senderWalletId,
+                        balanceAfter: updatedSenderWallet.balance
+                    }
+                });
+            }
+
+            return createdTransaction;
         });
+
         return transaction;
-    } catch (error) {
-        throw new Error('Failed to create transaction');
+    } catch (error: any) {
+        throw new Error(error.message || 'Failed to create transaction');
     }
 }
 

@@ -8,7 +8,7 @@ const CreateLedgerEntryService = async (transactionId: string, amount: number, t
             data: {
                 transactionId,
                 amount,
-                balanceAfter: 0, 
+                balanceAfter,
                 type,
                 walletId
                 

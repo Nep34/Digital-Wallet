@@ -5,16 +5,18 @@ import ledgerRouter from './modules/ledger/ledger.routes';
 import transactionRouter from './modules/Transaction/transaction.route';
 import walletRouter from './modules/Wallet/wallet.route';
 import userRouter from './modules/User/user.route';
+import authMiddleware from './middlewares/auth.middleware';
 
 const app = express();
 app.use(express.json());
 
 // Module routes
 app.use('/auth', authRouter);
-app.use('/ledger', ledgerRouter);
-app.use('/transactions', transactionRouter);
-app.use('/wallet', walletRouter);
-app.use('/users', userRouter);
+// Protected routes
+app.use('/ledger', authMiddleware, ledgerRouter);
+app.use('/transactions', authMiddleware, transactionRouter);
+app.use('/wallet', authMiddleware, walletRouter);
+app.use('/users', authMiddleware, userRouter);
 
 // Healthcheck
 app.get('/', (req, res) => {

@@ -7,7 +7,13 @@ const CreateTransactionController = async (req: Request, res: Response) => {
         if(!amount || !type || !senderWalletId || !receiverWalletId) {
             return res.status(400).json({ message: 'Amount, type, senderWalletId and receiverWalletId are required' });
         }
-        const transaction = await CreateTransactionService(amount, type, senderWalletId, receiverWalletId, description);
+        const transaction = await CreateTransactionService({
+            amount,
+            type,
+            senderWalletId,
+            receiverWalletId,
+            description
+        });
         res.status(201).json(transaction);
     }
     catch (error: any) {
@@ -17,7 +23,7 @@ const CreateTransactionController = async (req: Request, res: Response) => {
 
 const GetTransactionsController = async (req: Request, res: Response) => {
     try {
-        const userId = req.user.userId;
+        const userId = req.user!.id;
         const transactions = await GetTransactionsService(userId);
         res
             .status(200)
