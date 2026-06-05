@@ -1,33 +1,14 @@
-import { loginService, registerService } from './auth.services';
-import { env } from '../../config/env';
+import { GetWalletService } from './wallet.services';
 import { Request, Response } from 'express';
-import {User} from './auth.types';
 
-const loginController = async (req: Request, res: Response) => {
+const GetWallet = async (req: Request, res: Response) => {
     try {
-        const { email, password } = req.body;
-        if(!email || !password) {
-            return res.status(400).json({ message: 'Email and password are required' });
-        }
-        const { user, token } = await loginService(email, password);
-        res.status(200).json({ user, token });
+        const userId = req.user.id;
+        const wallet = await GetWalletService(userId);
+        res.status(200).json(wallet);
+    } catch (error) {
+        res.status(500).json({ message: 'Internal server error' });
     }
-    catch (error: any) {
-        res.status(401).json({ message: error.message });
-    }
-};
-const registerController = async (req: Request, res: Response) => {
-    try {
-        const { name, email, password } = req.body;
-        if(!name || !email || !password) {
-            return res.status(400).json({ message: 'Name, email and password are required' });
-        }
-        const { user, token } = await registerService(name, email, password);
-        res.status(201).json({ user, token });
-    }
-    catch (error: any) {
-        res.status(400).json({ message: error.message });
-    }
-};
+}
 
-export { loginController, registerController };
+export { GetWallet };

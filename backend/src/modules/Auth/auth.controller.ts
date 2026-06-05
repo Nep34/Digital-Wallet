@@ -2,6 +2,7 @@ import { loginService, registerService } from './auth.services';
 import { env } from '../../config/env';
 import { Request, Response } from 'express';
 import {User} from './auth.types';
+import {CreateWalletService} from '../Wallet/wallet.services';
 
 const loginController = async (req: Request, res: Response) => {
     try {
@@ -23,11 +24,16 @@ const registerController = async (req: Request, res: Response) => {
             return res.status(400).json({ message: 'Name, email and password are required' });
         }
         const { user, token } = await registerService(name, email, password);
+        await CreateWalletService(user.id);
         res.status(201).json({ user, token });
     }
     catch (error: any) {
         res.status(400).json({ message: error.message });
     }
 };
+
+// const LogoutController = async (req: Request, res: Response) => {
+//     try {
+//         const token = req.headers.authorization?.split(' ')[1];
 
 export { loginController, registerController };
