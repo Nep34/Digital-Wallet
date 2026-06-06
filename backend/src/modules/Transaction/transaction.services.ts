@@ -10,6 +10,7 @@ type CreateTransactionPayload = {
     receiverWalletId: string;
     description?: string;
 };
+// Service to create a transaction and update wallet balances atomically
 
 const CreateTransactionService = async ({ amount, type, senderWalletId, receiverWalletId, description }: CreateTransactionPayload) => {
     try {
@@ -40,7 +41,7 @@ const CreateTransactionService = async ({ amount, type, senderWalletId, receiver
             const createdTransaction: Transaction = await tx.transaction.create({
                 data: {
                     amount,
-                    refrenceId: `TXN-${Date.now()}`,
+                    refrenceId: `TXN-${senderWalletId + Date.now()}`,
                     type,
                     senderWalletId,
                     receiverWalletId,
