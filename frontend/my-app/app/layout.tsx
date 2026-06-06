@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Digital Wallet",
-  description: "A polished wallet dashboard with Axios and TanStack Query",
+  description: "A landing page, login, register, and dashboard for wallet operations",
 };
 
 export default function RootLayout({
