@@ -3,7 +3,7 @@ import { Request, Response } from 'express';
 
 const GetWallet = async (req: Request, res: Response) => {
     try {
-        const userId = req.user.id;
+        const userId = req.user!.id;
         const wallet = await GetWalletService(userId);
         res.status(200).json(wallet);
     } catch (error) {

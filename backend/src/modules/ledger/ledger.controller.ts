@@ -3,7 +3,7 @@ import { CreateLedgerEntryService, GetLedgerEntriesService } from './ledger.serv
 
 const getLedgerEntriesController = async (req: Request, res: Response) => {
     try {
-        const walletId = req.user.walletId;
+        const walletId = req.user!.walletId;
         const ledgerEntries = await GetLedgerEntriesService(walletId);
         res.status(200).json(ledgerEntries);
     }

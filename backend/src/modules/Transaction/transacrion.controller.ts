@@ -4,16 +4,20 @@ import { CreateTransactionService, GetTransactionsService } from './transaction.
 const CreateTransactionController = async (req: Request, res: Response) => {
     try {
         const { amount, type, senderWalletId, receiverWalletId, description } = req.body;
+        const idempotencyKey = (req.headers['idempotency-key'] || req.headers['Idempotency-Key']) as string | undefined;
         if(!amount || !type || !senderWalletId || !receiverWalletId) {
             return res.status(400).json({ message: 'Amount, type, senderWalletId and receiverWalletId are required' });
         }
-        const transaction = await CreateTransactionService({
+        const payload: any = {
             amount,
             type,
             senderWalletId,
             receiverWalletId,
             description
-        });
+        };
+        if (idempotencyKey) payload.idempotencyKey = idempotencyKey;
+
+        const transaction = await CreateTransactionService(payload);
         res.status(201).json(transaction);
     }
     catch (error: any) {

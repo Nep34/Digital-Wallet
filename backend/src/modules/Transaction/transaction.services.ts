@@ -1,4 +1,5 @@
 import prisma from '../../config/prismaClient';
+import redisClient from '../../config/redisClient';
 import { Transaction, TransactionTypes } from './transaction.type';
 import { UpdateWalletBalanceService } from '../Wallet/wallet.services';
 import { CreateLedgerEntryService } from '../ledger/ledger.services';
@@ -9,11 +10,34 @@ type CreateTransactionPayload = {
     senderWalletId: string;
     receiverWalletId: string;
     description?: string;
+    idempotencyKey?: string;
 };
 // Service to create a transaction and update wallet balances atomically
 
-const CreateTransactionService = async ({ amount, type, senderWalletId, receiverWalletId, description }: CreateTransactionPayload) => {
+const CreateTransactionService = async ({ amount, type, senderWalletId, receiverWalletId, description, idempotencyKey }: CreateTransactionPayload) => {
     try {
+        // If idempotencyKey provided, check Redis for existing entry
+        const redisKey = idempotencyKey ? `idem:${idempotencyKey}` : null;
+        if (redisKey) {
+            const existingRaw = await redisClient.get(redisKey);
+            if (existingRaw) {
+                try {
+                    const parsed = JSON.parse(existingRaw);
+                    if (parsed.transactionId) {
+                        const existingTx = await prisma.transaction.findUnique({ where: { id: parsed.transactionId } });
+                        if (existingTx) return existingTx;
+                    }
+                    // If it's in progress or completed without transaction, reject to avoid duplicate work
+                    throw new Error('Request with this idempotency key is already in progress or completed');
+                } catch (e) {
+                    // malformed cache entry; continue to attempt creating a fresh one
+                }
+            }
+
+            // Set a lock in Redis with 24hr TTL to mark in-progress
+            const lockValue = JSON.stringify({ status: 'IN_PROGRESS', requestBody: { amount, type, senderWalletId, receiverWalletId, description } });
+            await redisClient.set(redisKey, lockValue, { EX: 24 * 60 * 60 });
+        }
         const transaction = await prisma.$transaction(async (tx) => {
             // Lock sender and receiver wallet rows to prevent concurrent modifications
             const senderRows: any = await tx.$queryRaw`SELECT * FROM "Wallet" WHERE id = ${senderWalletId} FOR UPDATE`;
@@ -72,6 +96,12 @@ const CreateTransactionService = async ({ amount, type, senderWalletId, receiver
 
             return createdTransaction;
         });
+
+        // If idempotency key was used, update Redis with the completed response and transactionId (keep 24hr TTL)
+        if (redisKey) {
+            const completedValue = JSON.stringify({ status: 'COMPLETED', transactionId: transaction.id, response: transaction });
+            await redisClient.set(redisKey, completedValue, { EX: 24 * 60 * 60 });
+        }
 
         return transaction;
     } catch (error: any) {
