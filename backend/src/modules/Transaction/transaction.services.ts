@@ -1,5 +1,5 @@
 import prisma from '../../config/prismaClient';
-import redisClient from '../../config/redisClient';
+import { getRedisValue, setRedisValue } from '../../config/redisClient';
 import { Transaction, TransactionTypes } from './transaction.type';
 import { UpdateWalletBalanceService } from '../Wallet/wallet.services';
 import { CreateLedgerEntryService } from '../ledger/ledger.services';
@@ -19,7 +19,7 @@ const CreateTransactionService = async ({ amount, type, senderWalletId, receiver
         // If idempotencyKey provided, check Redis for existing entry
         const redisKey = idempotencyKey ? `idem:${idempotencyKey}` : null;
         if (redisKey) {
-            const existingRaw = await redisClient.get(redisKey);
+            const existingRaw = await getRedisValue(redisKey);
             if (existingRaw) {
                 try {
                     const parsed = JSON.parse(existingRaw);
@@ -36,7 +36,7 @@ const CreateTransactionService = async ({ amount, type, senderWalletId, receiver
 
             // Set a lock in Redis with 24hr TTL to mark in-progress
             const lockValue = JSON.stringify({ status: 'IN_PROGRESS', requestBody: { amount, type, senderWalletId, receiverWalletId, description } });
-            await redisClient.set(redisKey, lockValue, { EX: 24 * 60 * 60 });
+            await setRedisValue(redisKey, lockValue, 24 * 60 * 60);
         }
         const transaction = await prisma.$transaction(async (tx) => {
             // Lock sender and receiver wallet rows to prevent concurrent modifications
@@ -100,7 +100,7 @@ const CreateTransactionService = async ({ amount, type, senderWalletId, receiver
         // If idempotency key was used, update Redis with the completed response and transactionId (keep 24hr TTL)
         if (redisKey) {
             const completedValue = JSON.stringify({ status: 'COMPLETED', transactionId: transaction.id, response: transaction });
-            await redisClient.set(redisKey, completedValue, { EX: 24 * 60 * 60 });
+            await setRedisValue(redisKey, completedValue, 24 * 60 * 60);
         }
 
         return transaction;

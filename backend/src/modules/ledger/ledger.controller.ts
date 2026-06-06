@@ -1,9 +1,12 @@
 import {Request, Response} from 'express';
-import { CreateLedgerEntryService, GetLedgerEntriesService } from './ledger.services';
+import { GetLedgerEntriesService } from './ledger.services';
+import { GetWalletService } from '../Wallet/wallet.services';
 
 const getLedgerEntriesController = async (req: Request, res: Response) => {
     try {
-        const walletId = req.user!.walletId;
+        const userId = req.user!.id;
+        const wallet = await GetWalletService(userId);
+        const walletId = wallet.id;
         const ledgerEntries = await GetLedgerEntriesService(walletId);
         res.status(200).json(ledgerEntries);
     }

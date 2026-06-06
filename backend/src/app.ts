@@ -1,5 +1,6 @@
 import express from "express";
 import { env } from "./config/env";
+import type {} from "./types/express";
 import authRouter from './modules/Auth/auth.route';
 import ledgerRouter from './modules/ledger/ledger.routes';
 import transactionRouter from './modules/Transaction/transaction.route';

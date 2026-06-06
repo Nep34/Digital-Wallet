@@ -10,6 +10,4 @@ const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret_key";
 if (!DATABASE_URL) {
   throw new Error("DATABASE_URL is not defined in the environment variables.");
 }
-export const env = { DATABASE_URL, Port, JWT_SECRET };
-export type Env = typeof env & { REDIS_URL: string };
-export const envWithRedis: Env = { DATABASE_URL, Port, JWT_SECRET, REDIS_URL };
+export const env = { DATABASE_URL, REDIS_URL, Port, JWT_SECRET };

@@ -1,13 +1,60 @@
 import { createClient } from 'redis';
-import { envWithRedis } from './env';
+import { env } from './env';
 
-const redisUrl = process.env.REDIS_URL || envWithRedis.REDIS_URL || 'redis://localhost:6379';
+const redis = createClient({ url: env.REDIS_URL });
+const memoryStore = new Map<string, { value: string; expiresAt: number }>();
 
-const client = createClient({ url: redisUrl });
+let connectAttempt: Promise<boolean> | null = null;
+let redisAvailable = false;
 
-client.on('error', (err) => console.error('Redis Client Error', err));
+async function ensureRedisConnection() {
+  if (redisAvailable) {
+    return true;
+  }
 
-// Connect asynchronously; failures will be logged.
-client.connect().catch((err) => console.error('Redis connection error:', err));
+  if (!connectAttempt) {
+    connectAttempt = redis
+      .connect()
+      .then(() => {
+        redisAvailable = true;
+        return true;
+      })
+      .catch((error) => {
+        redisAvailable = false;
+        console.error('Redis unavailable, falling back to in-memory idempotency cache:', error?.message || error);
+        return false;
+      });
+  }
 
-export default client;
+  return connectAttempt;
+}
+
+async function getRedisValue(key: string) {
+  const connected = await ensureRedisConnection();
+  if (connected) {
+    return redis.get(key);
+  }
+
+  const record = memoryStore.get(key);
+  if (!record) return null;
+  if (record.expiresAt <= Date.now()) {
+    memoryStore.delete(key);
+    return null;
+  }
+  return record.value;
+}
+
+async function setRedisValue(key: string, value: string, ttlSeconds: number) {
+  const connected = await ensureRedisConnection();
+  if (connected) {
+    await redis.set(key, value, { EX: ttlSeconds });
+    return;
+  }
+
+  memoryStore.set(key, {
+    value,
+    expiresAt: Date.now() + ttlSeconds * 1000,
+  });
+}
+
+export { getRedisValue, setRedisValue };
