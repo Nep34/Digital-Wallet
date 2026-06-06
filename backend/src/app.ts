@@ -1,6 +1,7 @@
 import express from "express";
 import { env } from "./config/env";
 import type {} from "./types/express";
+import cors from 'cors';
 import authRouter from './modules/Auth/auth.route';
 import ledgerRouter from './modules/ledger/ledger.routes';
 import transactionRouter from './modules/Transaction/transaction.route';
@@ -10,6 +11,10 @@ import authMiddleware from './middlewares/auth.middleware';
 
 const app = express();
 app.use(express.json());
+app.use(cors({
+  origin: ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002'],
+  credentials: true,
+}));
 
 // Module routes
 app.use('/auth', authRouter);

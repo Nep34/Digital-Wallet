@@ -7,7 +7,7 @@ A polished Next.js app for the backend wallet API.
 Create a `.env.local` file:
 
 ```bash
-NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
+NEXT_PUBLIC_API_BASE_URL=http://localhost:3000
 ```
 
 Install dependencies and start the app:
