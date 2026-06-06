@@ -1,17 +1,11 @@
 'use client';
 
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../lib/api';
-import { clearToken, readToken, writeToken } from '../lib/storage';
-
-type AuthMode = 'login' | 'register';
-
-type User = {
-  id: string;
-  name?: string | null;
-  email: string;
-};
+import { clearToken, readToken } from '../lib/storage';
 
 type Wallet = {
   id: string;
@@ -35,11 +29,6 @@ type Transaction = {
   createdAt: string;
 };
 
-type AuthResponse = {
-  user: User;
-  token: string;
-};
-
 const initialTransferForm = {
   amount: '',
   type: 'TRANSFER' as Transaction['type'],
@@ -48,17 +37,22 @@ const initialTransferForm = {
 };
 
 export default function WalletDashboard() {
+  const router = useRouter();
   const queryClient = useQueryClient();
-  const [mode, setMode] = useState<AuthMode>('login');
   const [token, setToken] = useState<string | null>(null);
-  const [authForm, setAuthForm] = useState({ name: '', email: '', password: '' });
+  const [ready, setReady] = useState(false);
   const [transferForm, setTransferForm] = useState(initialTransferForm);
-  const [authMessage, setAuthMessage] = useState<string | null>(null);
   const [transferMessage, setTransferMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    setToken(readToken());
-  }, []);
+    const currentToken = readToken();
+    setToken(currentToken);
+    setReady(true);
+
+    if (!currentToken) {
+      router.replace('/login');
+    }
+  }, [router]);
 
   const walletQuery = useQuery({
     queryKey: ['wallet'],
@@ -76,30 +70,6 @@ export default function WalletDashboard() {
       return data;
     },
     enabled: Boolean(token),
-  });
-
-  const authMutation = useMutation({
-    mutationFn: async () => {
-      const endpoint = mode === 'login' ? '/auth/login' : '/auth/register';
-      const payload =
-        mode === 'login'
-          ? { email: authForm.email, password: authForm.password }
-          : { name: authForm.name, email: authForm.email, password: authForm.password };
-
-      const { data } = await api.post<AuthResponse>(endpoint, payload);
-      return data;
-    },
-    onSuccess: async ({ user, token: nextToken }) => {
-      writeToken(nextToken);
-      setToken(nextToken);
-      setAuthMessage(`Welcome, ${user.name || user.email}.`);
-      setAuthForm({ name: '', email: '', password: '' });
-      await queryClient.invalidateQueries({ queryKey: ['wallet'] });
-      await queryClient.invalidateQueries({ queryKey: ['transactions'] });
-    },
-    onError: (error: unknown) => {
-      setAuthMessage(error instanceof Error ? error.message : 'Authentication failed');
-    },
   });
 
   const transactionMutation = useMutation({
@@ -140,6 +110,10 @@ export default function WalletDashboard() {
   const isAuthed = Boolean(token);
   const wallet = walletQuery.data;
   const transactions = transactionsQuery.data ?? [];
+  const recentTransaction = transactions[0] ?? null;
+  const transferCount = transactions.filter((item) => item.type === 'TRANSFER').length;
+  const depositCount = transactions.filter((item) => item.type === 'DEPOSIT').length;
+  const withdrawalCount = transactions.filter((item) => item.type === 'WITHDRAWAL').length;
 
   const balanceLabel = useMemo(() => {
     if (!wallet) return '0.00';
@@ -149,253 +123,271 @@ export default function WalletDashboard() {
     }).format(wallet.balance);
   }, [wallet]);
 
+  const updatedAtLabel = useMemo(() => {
+    if (!wallet) return 'Waiting for session';
+
+    return new Intl.DateTimeFormat('en-US', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(new Date(wallet.updatedAt));
+  }, [wallet]);
+
+  if (!ready) {
+    return <DashboardShellLoading />;
+  }
+
+  if (!isAuthed) {
+    return <DashboardShellLoading message="Redirecting to the sign-in screen..." />;
+  }
+
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(74,222,128,0.18),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(59,130,246,0.16),_transparent_28%),linear-gradient(135deg,_#07111f_0%,_#0b1324_55%,_#111827_100%)] text-white">
-      <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8">
-        <section className="rounded-[2rem] border border-white/10 bg-white/8 px-6 py-6 shadow-2xl shadow-black/30 backdrop-blur-xl sm:px-8">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-3xl">
-              <p className="mb-3 inline-flex rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-300">
-                Digital Wallet Control Center
-              </p>
-              <h1 className="max-w-2xl text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-                Move money, track balance, and replay-safe every submission with idempotency.
-              </h1>
-              <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
-                Sign in, inspect your wallet, then send transfers or deposits from a polished dashboard powered by Axios and TanStack Query.
-              </p>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-3 lg:w-[430px]">
-              <StatCard label="Wallet" value={wallet ? wallet.id.slice(0, 8) : '—'} />
-              <StatCard label="Currency" value={wallet?.currency ?? 'NPR'} />
-              <StatCard label="Status" value={wallet?.status ?? 'Locked'} />
-            </div>
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.18),_transparent_26%),radial-gradient(circle_at_bottom_right,_rgba(59,130,246,0.18),_transparent_24%),linear-gradient(135deg,_#05101d_0%,_#0b1628_55%,_#111827_100%)] text-white">
+      <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+        <header className="flex flex-col gap-4 rounded-[2rem] border border-white/10 bg-white/6 px-6 py-5 shadow-2xl shadow-black/25 backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-emerald-300">Digital Wallet</p>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Dashboard</h1>
+            <p className="mt-1 text-sm text-slate-400">Wallet overview, transfer composer, and transaction history in one place.</p>
           </div>
-        </section>
 
-        <section className="grid gap-6 lg:grid-cols-[420px_minmax(0,1fr)]">
-          <div className="rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 shadow-xl shadow-black/20 backdrop-blur-xl">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-xl font-semibold text-white">Access</h2>
-                <p className="text-sm text-slate-400">Login or register to load your wallet and recent transactions.</p>
-              </div>
-              {isAuthed ? (
-                <button
-                  onClick={() => {
-                    clearToken();
-                    setToken(null);
-                    queryClient.clear();
-                  }}
-                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-white/10"
-                >
-                  Sign out
-                </button>
-              ) : null}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-sm font-medium text-emerald-200">
+              Session active
             </div>
-
-            <div className="mt-5 flex rounded-full border border-white/10 bg-white/5 p-1">
-              {(['login', 'register'] as AuthMode[]).map((item) => (
-                <button
-                  key={item}
-                  onClick={() => setMode(item)}
-                  className={`flex-1 rounded-full px-4 py-2 text-sm font-semibold capitalize transition ${
-                    mode === item ? 'bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-400/20' : 'text-slate-300 hover:text-white'
-                  }`}
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
-
-            <form
-              className="mt-6 space-y-4"
-              onSubmit={(event) => {
-                event.preventDefault();
-                setAuthMessage(null);
-                authMutation.mutate();
+            <button
+              onClick={() => {
+                clearToken();
+                setToken(null);
+                queryClient.clear();
+                router.replace('/login');
               }}
+              className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-white/10"
             >
-              {mode === 'register' ? (
-                <InputField
-                  label="Full name"
-                  value={authForm.name}
-                  onChange={(value) => setAuthForm((current) => ({ ...current, name: value }))}
-                  placeholder="Ada Lovelace"
-                />
-              ) : null}
-              <InputField
-                label="Email"
-                value={authForm.email}
-                onChange={(value) => setAuthForm((current) => ({ ...current, email: value }))}
-                placeholder="you@example.com"
-                type="email"
-              />
-              <InputField
-                label="Password"
-                value={authForm.password}
-                onChange={(value) => setAuthForm((current) => ({ ...current, password: value }))}
-                placeholder="••••••••"
-                type="password"
-              />
+              Sign out
+            </button>
+            <Link
+              href="/"
+              className="rounded-full border border-white/10 bg-transparent px-4 py-2 text-sm font-medium text-slate-300 transition hover:bg-white/10 hover:text-white"
+            >
+              Home
+            </Link>
+          </div>
+        </header>
 
-              <button
-                type="submit"
-                disabled={authMutation.isPending}
-                className="w-full rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {authMutation.isPending ? 'Working…' : mode === 'login' ? 'Sign in' : 'Create account'}
-              </button>
-
-              {authMessage ? <Notice tone={isAuthed ? 'success' : 'info'}>{authMessage}</Notice> : null}
-            </form>
-
-            <div className="mt-8 rounded-3xl border border-white/10 bg-black/30 p-4">
-              <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Quick setup</p>
-              <div className="mt-3 space-y-2 text-sm text-slate-300">
-                <p>1. Set <span className="font-semibold text-white">NEXT_PUBLIC_API_BASE_URL</span> to your backend URL.</p>
-                <p>2. Register or sign in.</p>
-                <p>3. Use your wallet ID for deposits or withdrawals, or a receiver wallet ID for transfers.</p>
+        <section className="grid gap-6 lg:grid-cols-[1.4fr_0.9fr]">
+          <div className="rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 shadow-2xl shadow-black/25 backdrop-blur-xl sm:p-8">
+            <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+              <div className="max-w-3xl">
+                <p className="inline-flex rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.32em] text-cyan-200">
+                  Wallet overview
+                </p>
+                <h2 className="mt-5 text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+                  Keep balance, activity, and transfers in sync.
+                </h2>
+                <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
+                  This dashboard reads the protected wallet and transaction endpoints, then lets you submit replay-safe transfers with an idempotency key.
+                </p>
               </div>
+
+              <div className="grid gap-3 sm:grid-cols-3 xl:w-[460px] xl:grid-cols-3">
+                <StatCard label="Balance" value={wallet ? `${balanceLabel} ${wallet.currency}` : 'Loading'} />
+                <StatCard label="Wallet status" value={wallet?.status ?? 'Loading'} />
+                <StatCard label="Updated" value={wallet ? updatedAtLabel : 'Loading'} />
+              </div>
+            </div>
+
+            <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <MetricCard label="Wallet ID" value={wallet?.id ?? 'Loading'} hint="Protected /wallet response" />
+              <MetricCard label="User ID" value={wallet?.userId ?? 'Loading'} hint="Owner of the wallet" />
+              <MetricCard label="Currency" value={wallet?.currency ?? 'NPR'} hint="Current settlement currency" />
+              <MetricCard label="Activity" value={String(transactions.length)} hint="Fetched transactions" />
             </div>
           </div>
 
           <div className="grid gap-6">
-            <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-              <section className="rounded-[2rem] border border-white/10 bg-white/8 p-6 shadow-xl shadow-black/20 backdrop-blur-xl">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <h2 className="text-xl font-semibold text-white">Wallet</h2>
-                    <p className="text-sm text-slate-400">Current balance and metadata from the protected `/wallet` route.</p>
-                  </div>
-                  <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-right">
-                    <p className="text-xs uppercase tracking-[0.35em] text-emerald-300">Balance</p>
-                    <p className="text-2xl font-semibold text-white">{balanceLabel} {wallet?.currency ?? 'NPR'}</p>
-                  </div>
-                </div>
-
-                <div className="mt-6 grid gap-4 sm:grid-cols-3">
-                  <InfoTile label="Wallet ID" value={wallet?.id ?? 'Sign in to load'} />
-                  <InfoTile label="User ID" value={wallet?.userId ?? '—'} />
-                  <InfoTile label="Status" value={wallet?.status ?? '—'} />
-                </div>
-
-                {!isAuthed ? (
-                  <p className="mt-6 rounded-2xl border border-dashed border-white/15 bg-white/5 px-4 py-3 text-sm text-slate-300">
-                    Authenticate to fetch your wallet data and submit transactions.
-                  </p>
-                ) : walletQuery.isLoading ? (
-                  <p className="mt-6 text-sm text-slate-400">Loading wallet...</p>
-                ) : walletQuery.error ? (
-                  <Notice tone="error">Failed to load wallet.</Notice>
-                ) : null}
-              </section>
-
-              <section className="rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 shadow-xl shadow-black/20 backdrop-blur-xl">
-                <h2 className="text-xl font-semibold text-white">Transaction Composer</h2>
-                <p className="mt-1 text-sm text-slate-400">Every submit sends an `Idempotency-Key` header so retries do not duplicate the request.</p>
-
-                <form
-                  className="mt-5 space-y-4"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    setTransferMessage(null);
-                    transactionMutation.mutate();
-                  }}
-                >
-                  <InputField
-                    label="Amount"
-                    value={transferForm.amount}
-                    onChange={(value) => setTransferForm((current) => ({ ...current, amount: value }))}
-                    placeholder="2500"
-                    type="number"
-                  />
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <SelectField
-                      label="Type"
-                      value={transferForm.type}
-                      onChange={(value) => {
-                        const nextType = value as Transaction['type'];
-                        setTransferForm((current) => ({
-                          ...current,
-                          type: nextType,
-                          receiverWalletId: nextType === 'TRANSFER' ? current.receiverWalletId : wallet?.id ?? current.receiverWalletId,
-                        }));
-                      }}
-                      options={[
-                        { label: 'Transfer', value: 'TRANSFER' },
-                        { label: 'Deposit', value: 'DEPOSIT' },
-                        { label: 'Withdrawal', value: 'WITHDRAWAL' },
-                      ]}
-                    />
-                    <InputField
-                      label="Receiver wallet ID"
-                      value={transferForm.receiverWalletId}
-                      onChange={(value) => setTransferForm((current) => ({ ...current, receiverWalletId: value }))}
-                      placeholder={wallet?.id ?? 'wallet-id'}
-                      disabled={transferForm.type !== 'TRANSFER'}
-                    />
-                  </div>
-                  <InputField
-                    label="Description"
-                    value={transferForm.description}
-                    onChange={(value) => setTransferForm((current) => ({ ...current, description: value }))}
-                    placeholder="Invoice payment"
-                  />
-
-                  <button
-                    type="submit"
-                    disabled={transactionMutation.isPending || !isAuthed}
-                    className="w-full rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {transactionMutation.isPending ? 'Submitting…' : 'Submit transaction'}
-                  </button>
-
-                  {transferMessage ? <Notice tone={transferMessage.toLowerCase().includes('success') ? 'success' : 'error'}>{transferMessage}</Notice> : null}
-                </form>
-              </section>
-            </div>
-
-            <section className="rounded-[2rem] border border-white/10 bg-white/8 p-6 shadow-xl shadow-black/20 backdrop-blur-xl">
+            <section className="rounded-[2rem] border border-white/10 bg-white/6 p-6 shadow-2xl shadow-black/20 backdrop-blur-xl">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-xl font-semibold text-white">Recent transactions</h2>
-                  <p className="text-sm text-slate-400">Latest items fetched from the protected `/transactions` route.</p>
+                  <h3 className="text-xl font-semibold text-white">Activity snapshot</h3>
+                  <p className="text-sm text-slate-400">A quick read on transaction mix and the latest item.</p>
                 </div>
                 <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.3em] text-slate-400">
-                  {transactions.length} items
+                  Live
                 </span>
               </div>
 
-              <div className="mt-5 overflow-hidden rounded-3xl border border-white/10">
-                {isAuthed ? (
-                  transactionsQuery.isLoading ? (
-                    <div className="p-6 text-sm text-slate-400">Loading transactions...</div>
-                  ) : transactions.length ? (
-                    <div className="divide-y divide-white/10">
-                      {transactions.map((item) => (
-                        <div key={item.id} className="grid gap-4 px-5 py-4 sm:grid-cols-[1.4fr_0.8fr_0.8fr_0.8fr] sm:items-center">
-                          <div>
-                            <p className="font-medium text-white">{item.refrenceId}</p>
-                            <p className="text-sm text-slate-400">{item.description || 'No description provided'}</p>
-                          </div>
-                          <Pill tone={item.type === 'TRANSFER' ? 'emerald' : item.type === 'DEPOSIT' ? 'sky' : 'amber'}>{item.type}</Pill>
-                          <Pill tone={item.status === 'COMPLETED' ? 'emerald' : item.status === 'FAILED' ? 'rose' : 'slate'}>{item.status}</Pill>
-                          <p className="text-right text-sm font-semibold text-white">{item.amount.toFixed(2)}</p>
-                        </div>
-                      ))}
+              <div className="mt-5 grid gap-4 sm:grid-cols-3">
+                <InfoTile label="Transfers" value={String(transferCount)} />
+                <InfoTile label="Deposits" value={String(depositCount)} />
+                <InfoTile label="Withdrawals" value={String(withdrawalCount)} />
+              </div>
+
+              <div className="mt-5 rounded-3xl border border-white/10 bg-black/20 p-4">
+                {transactionsQuery.isLoading ? (
+                  <p className="text-sm text-slate-400">Loading transactions...</p>
+                ) : transactionsQuery.error ? (
+                  <Notice tone="error">Failed to load recent transactions.</Notice>
+                ) : recentTransaction ? (
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Latest item</p>
+                      <p className="mt-2 text-sm font-semibold text-white">{recentTransaction.refrenceId}</p>
+                      <p className="mt-1 text-sm text-slate-400">{recentTransaction.description || 'No description provided'}</p>
                     </div>
-                  ) : (
-                    <div className="p-6 text-sm text-slate-400">No transactions yet.</div>
-                  )
+                    <div className="flex flex-wrap gap-2">
+                      <Pill tone={recentTransaction.type === 'TRANSFER' ? 'emerald' : recentTransaction.type === 'DEPOSIT' ? 'sky' : 'amber'}>
+                        {recentTransaction.type}
+                      </Pill>
+                      <Pill tone={recentTransaction.status === 'COMPLETED' ? 'emerald' : recentTransaction.status === 'FAILED' ? 'rose' : 'slate'}>
+                        {recentTransaction.status}
+                      </Pill>
+                    </div>
+                  </div>
                 ) : (
-                  <div className="p-6 text-sm text-slate-400">Sign in to view your transaction history.</div>
+                  <p className="text-sm text-slate-400">No transactions yet.</p>
                 )}
               </div>
             </section>
+
+            <section className="rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 shadow-2xl shadow-black/20 backdrop-blur-xl">
+              <h3 className="text-xl font-semibold text-white">Transfer composer</h3>
+              <p className="mt-1 text-sm text-slate-400">Every submit includes an Idempotency-Key header so retries do not duplicate the request.</p>
+
+              <form
+                className="mt-5 space-y-4"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  setTransferMessage(null);
+                  transactionMutation.mutate();
+                }}
+              >
+                <InputField
+                  label="Amount"
+                  value={transferForm.amount}
+                  onChange={(value) => setTransferForm((current) => ({ ...current, amount: value }))}
+                  placeholder="2500"
+                  type="number"
+                />
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <SelectField
+                    label="Type"
+                    value={transferForm.type}
+                    onChange={(value) => {
+                      const nextType = value as Transaction['type'];
+                      setTransferForm((current) => ({
+                        ...current,
+                        type: nextType,
+                        receiverWalletId: nextType === 'TRANSFER' ? current.receiverWalletId : wallet?.id ?? current.receiverWalletId,
+                      }));
+                    }}
+                    options={[
+                      { label: 'Transfer', value: 'TRANSFER' },
+                      { label: 'Deposit', value: 'DEPOSIT' },
+                      { label: 'Withdrawal', value: 'WITHDRAWAL' },
+                    ]}
+                  />
+                  <InputField
+                    label="Receiver wallet ID"
+                    value={transferForm.receiverWalletId}
+                    onChange={(value) => setTransferForm((current) => ({ ...current, receiverWalletId: value }))}
+                    placeholder={wallet?.id ?? 'wallet-id'}
+                    disabled={transferForm.type !== 'TRANSFER'}
+                  />
+                </div>
+
+                <InputField
+                  label="Description"
+                  value={transferForm.description}
+                  onChange={(value) => setTransferForm((current) => ({ ...current, description: value }))}
+                  placeholder="Invoice payment"
+                />
+
+                <button
+                  type="submit"
+                  disabled={transactionMutation.isPending || !wallet}
+                  className="w-full rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {transactionMutation.isPending ? 'Submitting…' : 'Submit transaction'}
+                </button>
+
+                {transferMessage ? <Notice tone={transferMessage.toLowerCase().includes('success') ? 'success' : 'error'}>{transferMessage}</Notice> : null}
+              </form>
+            </section>
           </div>
         </section>
+
+        <section className="grid gap-6 xl:grid-cols-[1fr_320px]">
+          <section className="rounded-[2rem] border border-white/10 bg-white/6 p-6 shadow-2xl shadow-black/20 backdrop-blur-xl">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-xl font-semibold text-white">Recent transactions</h3>
+                <p className="text-sm text-slate-400">Latest items fetched from the protected /transactions route.</p>
+              </div>
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.3em] text-slate-400">
+                {transactions.length} items
+              </span>
+            </div>
+
+            <div className="mt-5 overflow-hidden rounded-3xl border border-white/10">
+              {transactionsQuery.isLoading ? (
+                <div className="p-6 text-sm text-slate-400">Loading transactions...</div>
+              ) : transactionsQuery.error ? (
+                <div className="p-6">
+                  <Notice tone="error">Failed to load transaction history.</Notice>
+                </div>
+              ) : transactions.length ? (
+                <div className="divide-y divide-white/10">
+                  {transactions.map((item) => (
+                    <div key={item.id} className="grid gap-4 px-5 py-4 sm:grid-cols-[1.4fr_0.8fr_0.8fr_0.8fr] sm:items-center">
+                      <div>
+                        <p className="font-medium text-white">{item.refrenceId}</p>
+                        <p className="text-sm text-slate-400">{item.description || 'No description provided'}</p>
+                      </div>
+                      <Pill tone={item.type === 'TRANSFER' ? 'emerald' : item.type === 'DEPOSIT' ? 'sky' : 'amber'}>{item.type}</Pill>
+                      <Pill tone={item.status === 'COMPLETED' ? 'emerald' : item.status === 'FAILED' ? 'rose' : 'slate'}>{item.status}</Pill>
+                      <p className="text-right text-sm font-semibold text-white">{item.amount.toFixed(2)}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-6 text-sm text-slate-400">No transactions yet.</div>
+              )}
+            </div>
+          </section>
+
+          <aside className="rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 shadow-2xl shadow-black/20 backdrop-blur-xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-emerald-300">Next steps</p>
+            <h3 className="mt-3 text-2xl font-semibold text-white">Keep the flow tight</h3>
+            <p className="mt-3 text-sm leading-6 text-slate-400">
+              The dashboard now stays focused on wallet operations. Authentication belongs on the dedicated login and register pages.
+            </p>
+
+            <div className="mt-6 space-y-3">
+              <InfoTile label="Wallet" value={wallet?.status ?? 'Loading'} />
+              <InfoTile label="Recent item" value={recentTransaction?.status ?? 'None'} />
+              <InfoTile label="Network" value="Axios + React Query" />
+            </div>
+
+            <div className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-4 text-sm leading-6 text-slate-300">
+              If the backend token expires, sign out and sign back in from the dedicated auth page.
+            </div>
+          </aside>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function DashboardShellLoading({ message = 'Loading dashboard...' }: { message?: string }) {
+  return (
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.18),_transparent_26%),radial-gradient(circle_at_bottom_right,_rgba(59,130,246,0.18),_transparent_24%),linear-gradient(135deg,_#05101d_0%,_#0b1628_55%,_#111827_100%)] text-white">
+      <div className="mx-auto flex min-h-screen w-full max-w-7xl items-center justify-center px-4 py-6 sm:px-6 lg:px-8">
+        <div className="rounded-[2rem] border border-white/10 bg-slate-950/80 px-8 py-10 text-center shadow-2xl shadow-black/30 backdrop-blur-xl">
+          <p className="text-xs font-semibold uppercase tracking-[0.35em] text-emerald-300">Digital Wallet</p>
+          <h1 className="mt-4 text-3xl font-semibold text-white">{message}</h1>
+          <p className="mt-3 text-sm text-slate-400">Preparing the secure wallet view.</p>
+        </div>
       </div>
     </main>
   );
@@ -475,6 +467,16 @@ function StatCard({ label, value }: { label: string; value: string }) {
     <div className="rounded-3xl border border-white/10 bg-white/7 px-4 py-4">
       <p className="text-xs uppercase tracking-[0.3em] text-slate-500">{label}</p>
       <p className="mt-2 truncate text-lg font-semibold text-white">{value}</p>
+    </div>
+  );
+}
+
+function MetricCard({ label, value, hint }: { label: string; value: string; hint: string }) {
+  return (
+    <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-4">
+      <p className="text-xs uppercase tracking-[0.28em] text-slate-500">{label}</p>
+      <p className="mt-3 truncate text-sm font-semibold text-white">{value}</p>
+      <p className="mt-2 text-xs leading-5 text-slate-400">{hint}</p>
     </div>
   );
 }
