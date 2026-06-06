@@ -33,7 +33,9 @@ const GetWalletService = async (userId: string) => {
 
 const UpdateWalletBalanceService = async (tx: Prisma.TransactionClient, walletId: string, amount: number, type: string) => {
     try {
-        const wallet = await tx.wallet.findUnique({ where: { id: walletId } });
+        // Lock the wallet row to avoid concurrent balance updates
+        const rows: any = await tx.$queryRaw`SELECT * FROM "Wallet" WHERE id = ${walletId} FOR UPDATE`;
+        const wallet = rows && rows[0];
         if (!wallet) {
             throw new Error('Wallet not found');
         }

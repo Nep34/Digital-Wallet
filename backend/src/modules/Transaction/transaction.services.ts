@@ -14,13 +14,12 @@ type CreateTransactionPayload = {
 const CreateTransactionService = async ({ amount, type, senderWalletId, receiverWalletId, description }: CreateTransactionPayload) => {
     try {
         const transaction = await prisma.$transaction(async (tx) => {
-            const senderWallet = await tx.wallet.findUnique({
-                where: { id: senderWalletId }
-            });
+            // Lock sender and receiver wallet rows to prevent concurrent modifications
+            const senderRows: any = await tx.$queryRaw`SELECT * FROM "Wallet" WHERE id = ${senderWalletId} FOR UPDATE`;
+            const senderWallet = senderRows && senderRows[0];
 
-            const receiverWallet = await tx.wallet.findUnique({
-                where: { id: receiverWalletId }
-            });
+            const receiverRows: any = await tx.$queryRaw`SELECT * FROM "Wallet" WHERE id = ${receiverWalletId} FOR UPDATE`;
+            const receiverWallet = receiverRows && receiverRows[0];
 
             if (!senderWallet) {
                 throw new Error('Sender wallet not found');
