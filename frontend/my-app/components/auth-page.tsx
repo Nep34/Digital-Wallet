@@ -166,7 +166,7 @@ export default function AuthPage({ mode }: { mode: AuthMode }) {
             </div>
 
             <div className="mt-8 rounded-3xl border border-white/10 bg-white/5 p-4 text-xs leading-6 text-slate-400">
-              Your backend should expose `/auth/login` and `/auth/register` with `{ user, token }` responses.
+              Your backend should expose `/auth/login` and `/auth/register` with user and token responses.
             </div>
           </div>
         </section>
