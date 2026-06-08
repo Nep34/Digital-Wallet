@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../lib/api';
 import { clearToken, readToken } from '../lib/storage';
@@ -39,20 +39,16 @@ const initialTransferForm = {
 export default function WalletDashboard() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [token, setToken] = useState<string | null>(null);
-  const [ready, setReady] = useState(false);
   const [transferForm, setTransferForm] = useState(initialTransferForm);
   const [transferMessage, setTransferMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    const currentToken = readToken();
-    setToken(currentToken);
-    setReady(true);
+  const token = useSyncExternalStore(subscribeToTokenChanges, readToken, () => null);
 
-    if (!currentToken) {
+  useEffect(() => {
+    if (!token) {
       router.replace('/login');
     }
-  }, [router]);
+  }, [router, token]);
 
   const walletQuery = useQuery({
     queryKey: ['wallet'],
@@ -132,12 +128,8 @@ export default function WalletDashboard() {
     }).format(new Date(wallet.updatedAt));
   }, [wallet]);
 
-  if (!ready) {
-    return <DashboardShellLoading />;
-  }
-
   if (!isAuthed) {
-    return <DashboardShellLoading message="Redirecting to the sign-in screen..." />;
+    return <DashboardShellLoading message="Redirecting to secure access..." />;
   }
 
   return (
@@ -360,7 +352,7 @@ export default function WalletDashboard() {
             <p className="text-xs font-semibold uppercase tracking-[0.35em] text-emerald-300">Next steps</p>
             <h3 className="mt-3 text-2xl font-semibold text-white">Keep the flow tight</h3>
             <p className="mt-3 text-sm leading-6 text-slate-400">
-              The dashboard now stays focused on wallet operations. Authentication belongs on the dedicated login and register pages.
+              The dashboard now stays focused on wallet operations. Authentication belongs on the dedicated access pages.
             </p>
 
             <div className="mt-6 space-y-3">
@@ -377,6 +369,16 @@ export default function WalletDashboard() {
       </div>
     </main>
   );
+}
+
+function subscribeToTokenChanges(onStoreChange: () => void) {
+  window.addEventListener('storage', onStoreChange);
+  window.addEventListener('digital-wallet-token-change', onStoreChange as EventListener);
+
+  return () => {
+    window.removeEventListener('storage', onStoreChange);
+    window.removeEventListener('digital-wallet-token-change', onStoreChange as EventListener);
+  };
 }
 
 function DashboardShellLoading({ message = 'Loading dashboard...' }: { message?: string }) {
