@@ -1,11 +1,10 @@
 import { loginService, registerService } from './auth.services';
 import { Request, Response } from 'express';
-import {CreateWalletService} from '../Wallet/wallet.services';
-import prisma from '../../config/prismaClient';
 
 const loginController = async (req: Request, res: Response) => {
     try {
-        const { email, password } = req.body;
+        const email = req.body.email?.trim();
+        const { password } = req.body;
         if(!email || !password) {
             return res.status(400).json({ message: 'Email and password are required' });
         }
@@ -18,7 +17,9 @@ const loginController = async (req: Request, res: Response) => {
 };
 const registerController = async (req: Request, res: Response) => {
     try {
-        const { name, email, password } = req.body;
+        const name = req.body.name?.trim();
+        const email = req.body.email?.trim();
+        const { password } = req.body;
         if(!name || !email || !password) {
             return res.status(400).json({ message: 'Name, email and password are required' });
         }

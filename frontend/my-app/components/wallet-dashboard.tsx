@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../lib/api';
-import { clearToken, readToken } from '../lib/storage';
+import { clearToken, readToken, subscribeToTokenChanges } from '../lib/storage';
 
 type Wallet = {
   id: string;
@@ -139,7 +139,6 @@ export default function WalletDashboard() {
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.35em] text-emerald-300">Digital Wallet</p>
             <h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Dashboard</h1>
-            <p className="mt-1 text-sm text-slate-400">Wallet overview, transfer composer, and transaction history in one place.</p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -149,7 +148,6 @@ export default function WalletDashboard() {
             <button
               onClick={() => {
                 clearToken();
-                setToken(null);
                 queryClient.clear();
                 router.replace('/login');
               }}
@@ -174,25 +172,22 @@ export default function WalletDashboard() {
                   Wallet overview
                 </p>
                 <h2 className="mt-5 text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-                  Keep balance, activity, and transfers in sync.
+                  {wallet ? `${balanceLabel} ${wallet.currency}` : 'Loading balance'}
                 </h2>
-                <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
-                  This dashboard reads the protected wallet and transaction endpoints, then lets you submit replay-safe transfers with an idempotency key.
-                </p>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-3 xl:w-[460px] xl:grid-cols-3">
-                <StatCard label="Balance" value={wallet ? `${balanceLabel} ${wallet.currency}` : 'Loading'} />
                 <StatCard label="Wallet status" value={wallet?.status ?? 'Loading'} />
                 <StatCard label="Updated" value={wallet ? updatedAtLabel : 'Loading'} />
+                <StatCard label="Transactions" value={String(transactions.length)} />
               </div>
             </div>
 
             <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <MetricCard label="Wallet ID" value={wallet?.id ?? 'Loading'} hint="Protected /wallet response" />
-              <MetricCard label="User ID" value={wallet?.userId ?? 'Loading'} hint="Owner of the wallet" />
-              <MetricCard label="Currency" value={wallet?.currency ?? 'NPR'} hint="Current settlement currency" />
-              <MetricCard label="Activity" value={String(transactions.length)} hint="Fetched transactions" />
+              <MetricCard label="Wallet ID" value={wallet?.id ?? 'Loading'} />
+              <MetricCard label="User ID" value={wallet?.userId ?? 'Loading'} />
+              <MetricCard label="Currency" value={wallet?.currency ?? 'NPR'} />
+              <MetricCard label="Latest status" value={recentTransaction?.status ?? 'None'} />
             </div>
           </div>
 
@@ -201,7 +196,6 @@ export default function WalletDashboard() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h3 className="text-xl font-semibold text-white">Activity snapshot</h3>
-                  <p className="text-sm text-slate-400">A quick read on transaction mix and the latest item.</p>
                 </div>
                 <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.3em] text-slate-400">
                   Live
@@ -242,8 +236,7 @@ export default function WalletDashboard() {
             </section>
 
             <section className="rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 shadow-2xl shadow-black/20 backdrop-blur-xl">
-              <h3 className="text-xl font-semibold text-white">Transfer composer</h3>
-              <p className="mt-1 text-sm text-slate-400">Every submit includes an Idempotency-Key header so retries do not duplicate the request.</p>
+              <h3 className="text-xl font-semibold text-white">New transaction</h3>
 
               <form
                 className="mt-5 space-y-4"
@@ -300,7 +293,7 @@ export default function WalletDashboard() {
                   disabled={transactionMutation.isPending || !wallet}
                   className="w-full rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {transactionMutation.isPending ? 'Submitting…' : 'Submit transaction'}
+                  {transactionMutation.isPending ? 'Submitting...' : 'Submit transaction'}
                 </button>
 
                 {transferMessage ? <Notice tone={transferMessage.toLowerCase().includes('success') ? 'success' : 'error'}>{transferMessage}</Notice> : null}
@@ -314,7 +307,6 @@ export default function WalletDashboard() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 className="text-xl font-semibold text-white">Recent transactions</h3>
-                <p className="text-sm text-slate-400">Latest items fetched from the protected /transactions route.</p>
               </div>
               <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.3em] text-slate-400">
                 {transactions.length} items
@@ -349,36 +341,19 @@ export default function WalletDashboard() {
           </section>
 
           <aside className="rounded-[2rem] border border-white/10 bg-slate-950/70 p-6 shadow-2xl shadow-black/20 backdrop-blur-xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-emerald-300">Next steps</p>
-            <h3 className="mt-3 text-2xl font-semibold text-white">Keep the flow tight</h3>
-            <p className="mt-3 text-sm leading-6 text-slate-400">
-              The dashboard now stays focused on wallet operations. Authentication belongs on the dedicated access pages.
-            </p>
+            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-emerald-300">Summary</p>
+            <h3 className="mt-3 text-2xl font-semibold text-white">Account status</h3>
 
             <div className="mt-6 space-y-3">
               <InfoTile label="Wallet" value={wallet?.status ?? 'Loading'} />
               <InfoTile label="Recent item" value={recentTransaction?.status ?? 'None'} />
-              <InfoTile label="Network" value="Axios + React Query" />
-            </div>
-
-            <div className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-4 text-sm leading-6 text-slate-300">
-              If the backend token expires, sign out and sign back in from the dedicated auth page.
+              <InfoTile label="Currency" value={wallet?.currency ?? 'NPR'} />
             </div>
           </aside>
         </section>
       </div>
     </main>
   );
-}
-
-function subscribeToTokenChanges(onStoreChange: () => void) {
-  window.addEventListener('storage', onStoreChange);
-  window.addEventListener('digital-wallet-token-change', onStoreChange as EventListener);
-
-  return () => {
-    window.removeEventListener('storage', onStoreChange);
-    window.removeEventListener('digital-wallet-token-change', onStoreChange as EventListener);
-  };
 }
 
 function DashboardShellLoading({ message = 'Loading dashboard...' }: { message?: string }) {
@@ -388,7 +363,6 @@ function DashboardShellLoading({ message = 'Loading dashboard...' }: { message?:
         <div className="rounded-[2rem] border border-white/10 bg-slate-950/80 px-8 py-10 text-center shadow-2xl shadow-black/30 backdrop-blur-xl">
           <p className="text-xs font-semibold uppercase tracking-[0.35em] text-emerald-300">Digital Wallet</p>
           <h1 className="mt-4 text-3xl font-semibold text-white">{message}</h1>
-          <p className="mt-3 text-sm text-slate-400">Preparing the secure wallet view.</p>
         </div>
       </div>
     </main>
@@ -473,12 +447,11 @@ function StatCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-function MetricCard({ label, value, hint }: { label: string; value: string; hint: string }) {
+function MetricCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-4">
       <p className="text-xs uppercase tracking-[0.28em] text-slate-500">{label}</p>
       <p className="mt-3 truncate text-sm font-semibold text-white">{value}</p>
-      <p className="mt-2 text-xs leading-5 text-slate-400">{hint}</p>
     </div>
   );
 }

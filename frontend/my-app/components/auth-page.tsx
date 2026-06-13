@@ -4,8 +4,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import api from '../lib/api';
-import { readToken, writeToken } from '../lib/storage';
+import { writeToken } from '../lib/storage';
 
 type AuthMode = 'login' | 'register';
 
@@ -22,7 +23,6 @@ const copy = {
   login: {
     eyebrow: 'Welcome back',
     title: 'Sign in to your wallet',
-    subtitle: 'Use your account to view balances, send funds, and review transaction history.',
     submit: 'Sign in',
     footer: 'Need an account?',
     footerLink: '/register',
@@ -31,7 +31,6 @@ const copy = {
   register: {
     eyebrow: 'Join the wallet',
     title: 'Create your account',
-    subtitle: 'Set up access to the wallet dashboard in a few seconds.',
     submit: 'Create account',
     footer: 'Already have an account?',
     footerLink: '/login',
@@ -47,10 +46,26 @@ export default function AuthPage({ mode }: { mode: AuthMode }) {
   const authMutation = useMutation({
     mutationFn: async () => {
       const endpoint = mode === 'login' ? '/auth/login' : '/auth/register';
+      const name = authForm.name.trim();
+      const email = authForm.email.trim();
+      const password = authForm.password;
+
+      if (mode === 'register' && !name) {
+        throw new Error('Full name is required');
+      }
+
+      if (!email) {
+        throw new Error('Email is required');
+      }
+
+      if (!password) {
+        throw new Error('Password is required');
+      }
+
       const payload =
         mode === 'login'
-          ? { email: authForm.email, password: authForm.password }
-          : { name: authForm.name, email: authForm.email, password: authForm.password };
+          ? { email, password }
+          : { name, email, password };
 
       const { data } = await api.post<AuthResponse>(endpoint, payload);
       return data;
@@ -61,48 +76,35 @@ export default function AuthPage({ mode }: { mode: AuthMode }) {
       router.push('/dashboard');
     },
     onError: (error: unknown) => {
-      setMessage(error instanceof Error ? error.message : 'Authentication failed');
+      setMessage(getAuthErrorMessage(error));
     },
   });
 
-  const hasToken = Boolean(readToken());
   const content = copy[mode];
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.18),_transparent_28%),radial-gradient(circle_at_bottom_right,_rgba(59,130,246,0.18),_transparent_26%),linear-gradient(135deg,_#06101d_0%,_#0b1628_50%,_#111827_100%)] text-white">
       <div className="mx-auto grid min-h-screen w-full max-w-7xl gap-8 px-4 py-6 sm:px-6 lg:grid-cols-[1.1fr_0.9fr] lg:px-8">
         <section className="flex flex-col justify-between rounded-[2rem] border border-white/10 bg-white/6 p-6 shadow-2xl shadow-black/25 backdrop-blur-xl sm:p-8 lg:p-10">
-          <div>
+          <div className="flex h-full flex-col justify-between gap-10">
             <p className="inline-flex rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.32em] text-emerald-300">
               Digital Wallet
             </p>
             <h1 className="mt-6 max-w-2xl text-4xl font-semibold tracking-tight sm:text-6xl">
-              Fast, clean access for your wallet flow.
+              Your wallet, ready when you are.
             </h1>
-            <p className="mt-5 max-w-xl text-sm leading-6 text-slate-300 sm:text-base">
-              Separate pages for sign in, sign up, and the dashboard keep the experience focused and easier to navigate.
-            </p>
-
-            <div className="mt-10 grid gap-4 sm:grid-cols-3">
-              <FeatureCard title="Secure" text="Bearer token auth stored locally for the session." />
-              <FeatureCard title="Simple" text="One task per page, with no mixed login/register state." />
-              <FeatureCard title="Fast" text="Axios + TanStack Query for responsive server-state handling." />
-            </div>
-          </div>
-
-          <div className="mt-10 rounded-[1.5rem] border border-white/10 bg-slate-950/70 p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Current session</p>
-                <p className="mt-2 text-sm text-slate-300">
-                  {hasToken ? 'You already have a stored token.' : 'No stored token found yet.'}
-                </p>
-              </div>
+            <div className="flex flex-wrap gap-3">
               <Link
                 href="/"
                 className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-white/10"
               >
                 Back to home
+              </Link>
+              <Link
+                href="/dashboard"
+                className="rounded-full border border-white/10 bg-transparent px-4 py-2 text-sm font-medium text-slate-300 transition hover:bg-white/10 hover:text-white"
+              >
+                Dashboard
               </Link>
             </div>
           </div>
@@ -113,7 +115,6 @@ export default function AuthPage({ mode }: { mode: AuthMode }) {
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.35em] text-emerald-300">{content.eyebrow}</p>
               <h2 className="mt-4 text-3xl font-semibold text-white">{content.title}</h2>
-              <p className="mt-3 text-sm leading-6 text-slate-400">{content.subtitle}</p>
             </div>
 
             <form
@@ -130,6 +131,7 @@ export default function AuthPage({ mode }: { mode: AuthMode }) {
                   value={authForm.name}
                   onChange={(value) => setAuthForm((current) => ({ ...current, name: value }))}
                   placeholder="Ada Lovelace"
+                  required
                 />
               ) : null}
               <InputField
@@ -138,6 +140,7 @@ export default function AuthPage({ mode }: { mode: AuthMode }) {
                 onChange={(value) => setAuthForm((current) => ({ ...current, email: value }))}
                 placeholder="you@example.com"
                 type="email"
+                required
               />
               <InputField
                 label="Password"
@@ -145,6 +148,7 @@ export default function AuthPage({ mode }: { mode: AuthMode }) {
                 onChange={(value) => setAuthForm((current) => ({ ...current, password: value }))}
                 placeholder="••••••••"
                 type="password"
+                required
               />
 
               <button
@@ -152,7 +156,7 @@ export default function AuthPage({ mode }: { mode: AuthMode }) {
                 disabled={authMutation.isPending}
                 className="w-full rounded-2xl bg-gradient-to-r from-emerald-400 to-cyan-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {authMutation.isPending ? 'Working…' : content.submit}
+                {authMutation.isPending ? 'Working...' : content.submit}
               </button>
 
               {message ? <Notice tone={message.toLowerCase().includes('redirecting') ? 'success' : 'error'}>{message}</Notice> : null}
@@ -163,10 +167,6 @@ export default function AuthPage({ mode }: { mode: AuthMode }) {
               <Link href={content.footerLink} className="font-semibold text-emerald-300 transition hover:text-emerald-200">
                 {content.footerLinkLabel}
               </Link>
-            </div>
-
-            <div className="mt-8 rounded-3xl border border-white/10 bg-white/5 p-4 text-xs leading-6 text-slate-400">
-              Your backend should expose `/auth/login` and `/auth/register` with user and token responses.
             </div>
           </div>
         </section>
@@ -181,12 +181,14 @@ function InputField({
   onChange,
   placeholder,
   type = 'text',
+  required = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
   type?: string;
+  required?: boolean;
 }) {
   return (
     <label className="block">
@@ -194,6 +196,7 @@ function InputField({
       <input
         type={type}
         value={value}
+        required={required}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-emerald-400/50 focus:bg-white/10"
@@ -211,11 +214,10 @@ function Notice({ tone, children }: { tone: 'success' | 'error'; children: React
   return <div className={`rounded-2xl border px-4 py-3 text-sm ${tones[tone]}`}>{children}</div>;
 }
 
-function FeatureCard({ title, text }: { title: string; text: string }) {
-  return (
-    <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
-      <p className="text-sm font-semibold text-white">{title}</p>
-      <p className="mt-2 text-sm leading-6 text-slate-400">{text}</p>
-    </div>
-  );
+function getAuthErrorMessage(error: unknown) {
+  if (isAxiosError<{ message?: string }>(error)) {
+    return error.response?.data?.message ?? 'Authentication failed';
+  }
+
+  return error instanceof Error ? error.message : 'Authentication failed';
 }

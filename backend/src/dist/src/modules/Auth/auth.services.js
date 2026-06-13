@@ -9,7 +9,6 @@ const token_1 = require("../../utils/token");
 const prismaClient_1 = __importDefault(require("../../config/prismaClient"));
 const wallet_services_1 = require("../Wallet/wallet.services");
 const loginService = async (email, password) => {
-    // Implement login logic here
     try {
         const user = await prismaClient_1.default.user.findUnique({ where: { email } });
         if (!user) {
@@ -23,12 +22,11 @@ const loginService = async (email, password) => {
         return { user, token };
     }
     catch (error) {
-        throw new Error('Login failed');
+        throw new Error(error.message || 'Login failed');
     }
 };
 exports.loginService = loginService;
 const registerService = async (name, email, password) => {
-    // Implement registration logic here
     try {
         const existingUser = await prismaClient_1.default.user.findUnique({ where: { email } });
         if (existingUser) {
@@ -44,7 +42,7 @@ const registerService = async (name, email, password) => {
         return result;
     }
     catch (error) {
-        throw new Error('Registration failed');
+        throw new Error(error.message || 'Registration failed');
     }
 };
 exports.registerService = registerService;

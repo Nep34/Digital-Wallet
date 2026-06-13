@@ -3,8 +3,33 @@ import { generateToken } from '../../utils/token';
 import { User as UserType } from './auth.types';
 import  prisma  from '../../config/prismaClient';
 import {CreateWalletService} from '../Wallet/wallet.services';
+
+const publicAuthErrors = new Set([
+    'Invalid email or password',
+    'Email already in use',
+    'Failed to create wallet',
+]);
+
+function getPublicAuthError(error: unknown, fallback: string) {
+    const message = error instanceof Error ? error.message : '';
+
+    if (publicAuthErrors.has(message)) {
+        return message;
+    }
+
+    if (
+        message.includes("Can't reach database server") ||
+        message.includes('ECONNREFUSED') ||
+        message.includes('ENOTFOUND') ||
+        message.includes('ETIMEDOUT')
+    ) {
+        return 'Database is unavailable. Check your database connection.';
+    }
+
+    return fallback;
+}
+
 const loginService = async (email: string, password: string) => {
-    // Implement login logic here
     try {
         const user: UserType | null = await prisma.user.findUnique({ where: { email } });
         if (!user) {
@@ -19,12 +44,11 @@ const loginService = async (email: string, password: string) => {
         const token: string = generateToken(user.id.toString());
         return { user, token };
     } catch (error) {
-        throw new Error('Login failed');
+        throw new Error(getPublicAuthError(error, 'Login failed'));
     }
 };
 
 const registerService = async (name: string, email: string, password: string) => {
-    // Implement registration logic here
     try {
         const existingUser: UserType | null = await prisma.user.findUnique({ where: { email } });
         if (existingUser) {
@@ -39,7 +63,7 @@ const registerService = async (name: string, email: string, password: string) =>
         });
         return result;
     } catch (error) {
-        throw new Error('Registration failed');
+        throw new Error(getPublicAuthError(error, 'Registration failed'));
     }
 };
 
