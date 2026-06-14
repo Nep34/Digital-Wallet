@@ -44,6 +44,7 @@ const loginService = async (email: string, password: string) => {
         const token: string = generateToken(user.id.toString());
         return { user, token };
     } catch (error) {
+        console.error('Login failed:', error);
         throw new Error(getPublicAuthError(error, 'Login failed'));
     }
 };
@@ -63,6 +64,7 @@ const registerService = async (name: string, email: string, password: string) =>
         });
         return result;
     } catch (error) {
+        console.error('Registration failed:', error);
         throw new Error(getPublicAuthError(error, 'Registration failed'));
     }
 };
