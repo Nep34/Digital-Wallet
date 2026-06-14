@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Digital Wallet",
-  description: "A landing page, login, register, and dashboard for wallet operations",
+  description: "Send, receive, and track money with your digital wallet.",
 };
 
 export default function RootLayout({
