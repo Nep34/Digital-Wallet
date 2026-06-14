@@ -12,7 +12,12 @@ import authMiddleware from './middlewares/auth.middleware';
 const app = express();
 app.use(express.json());
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002'],
+  origin: [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://localhost:3002',
+    'https://digital-wallet-frontend-pdud.onrender.com',
+  ],
   credentials: true,
 }));
 
