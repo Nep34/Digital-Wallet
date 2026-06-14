@@ -1,4 +1,4 @@
-import {ledgerEntry as ledgerType} from '../../generated/prisma/client';
-import {LedgerType as LedgerEntryType} from '../../generated/prisma/enums';
+import type { ledgerEntry as ledgerType, LedgerType as LedgerEntryType } from '../../generated/prisma/client';
+
 export type Ledger = ledgerType;
 export type LedgerType = LedgerEntryType;
