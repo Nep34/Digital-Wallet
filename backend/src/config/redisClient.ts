@@ -1,40 +1,44 @@
-import { createClient } from 'redis';
+import { Redis } from '@upstash/redis';
 import { env } from './env';
 
-const redis = createClient({ url: env.REDIS_URL });
 const memoryStore = new Map<string, { value: string; expiresAt: number }>();
 
-let connectAttempt: Promise<boolean> | null = null;
+let redis: Redis | null = null;
 let redisAvailable = false;
 
-async function ensureRedisConnection() {
-  if (redisAvailable) {
-    return true;
+function getRedisInstance(): Redis | null {
+  if (redis) return redis;
+
+  if (!env.UPSTASH_REDIS_REST_URL || !env.UPSTASH_REDIS_REST_TOKEN) {
+    console.warn('Upstash Redis credentials not set, falling back to in-memory cache.');
+    return null;
   }
 
-  if (!connectAttempt) {
-    connectAttempt = redis
-      .connect()
-      .then(() => {
-        redisAvailable = true;
-        return true;
-      })
-      .catch((error) => {
-        redisAvailable = false;
-        console.error('Redis unavailable, falling back to in-memory idempotency cache:', error?.message || error);
-        return false;
-      });
+  try {
+    redis = new Redis({
+      url: env.UPSTASH_REDIS_REST_URL,
+      token: env.UPSTASH_REDIS_REST_TOKEN,
+    });
+    redisAvailable = true;
+    return redis;
+  } catch (error: any) {
+    console.error('Failed to initialize Upstash Redis:', error?.message || error);
+    return null;
   }
-
-  return connectAttempt;
 }
 
-async function getRedisValue(key: string) {
-  const connected = await ensureRedisConnection();
-  if (connected) {
-    return redis.get(key);
+async function getRedisValue(key: string): Promise<string | null> {
+  const client = getRedisInstance();
+  if (client) {
+    try {
+      const value = await client.get<string>(key);
+      return value ?? null;
+    } catch (error: any) {
+      console.error('Redis GET error, falling back to memory:', error?.message || error);
+    }
   }
 
+  // In-memory fallback
   const record = memoryStore.get(key);
   if (!record) return null;
   if (record.expiresAt <= Date.now()) {
@@ -44,13 +48,18 @@ async function getRedisValue(key: string) {
   return record.value;
 }
 
-async function setRedisValue(key: string, value: string, ttlSeconds: number) {
-  const connected = await ensureRedisConnection();
-  if (connected) {
-    await redis.set(key, value, { EX: ttlSeconds });
-    return;
+async function setRedisValue(key: string, value: string, ttlSeconds: number): Promise<void> {
+  const client = getRedisInstance();
+  if (client) {
+    try {
+      await client.set(key, value, { ex: ttlSeconds });
+      return;
+    } catch (error: any) {
+      console.error('Redis SET error, falling back to memory:', error?.message || error);
+    }
   }
 
+  // In-memory fallback
   memoryStore.set(key, {
     value,
     expiresAt: Date.now() + ttlSeconds * 1000,
