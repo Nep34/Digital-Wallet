@@ -31,6 +31,7 @@ const CreateTransactionService = async ({ amount, type, senderWalletId, receiver
                     throw new Error('Request with this idempotency key is already in progress or completed');
                 } catch (e) {
                     // malformed cache entry; continue to attempt creating a fresh one
+                    
                 }
             }
 
